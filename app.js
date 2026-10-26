@@ -100,10 +100,28 @@ const CATEGORIES = [
     { id: "together", name: "with someone" }, { id: "almost", name: "about to" }, { id: "after", name: "just after" }
   ]},
   { id: "masturbating", name: "masturbating", kinds: [
-    { id: "bed", name: "in bed" }, { id: "bathroom", name: "in the bathroom" }, { id: "else", name: "somewhere else" }
+    { id: "men", name: "men" }, { id: "women", name: "women" }
   ]},
   { id: "kissing", name: "kissing", kinds: [
     { id: "romance", name: "romantically" }, { id: "hello", name: "hello or goodbye" }, { id: "family", name: "family" }
+  ]},
+  { id: "porn", name: "watching porn", kinds: [
+    { id: "video", name: "a video" }, { id: "live", name: "a live cam" }, { id: "text", name: "photos or text" }
+  ]},
+  { id: "sexting", name: "sexting", kinds: [
+    { id: "write", name: "writing" }, { id: "read", name: "reading" }, { id: "photo", name: "a photo" }
+  ]},
+  { id: "dating", name: "on a dating app", kinds: [
+    { id: "swipe", name: "swiping" }, { id: "chat", name: "messaging" }, { id: "match", name: "looking at a match" }
+  ]},
+  { id: "flirting", name: "flirting", kinds: [
+    { id: "person", name: "in person" }, { id: "online", name: "online" }, { id: "work", name: "at work" }
+  ]},
+  { id: "sexthought", name: "thinking about sex", kinds: [
+    { id: "fantasy", name: "a fantasy" }, { id: "memory", name: "a memory" }, { id: "someone", name: "someone nearby" }
+  ]},
+  { id: "cuddling", name: "cuddling", kinds: [
+    { id: "bed", name: "in bed" }, { id: "sofa", name: "on a sofa" }, { id: "else", name: "somewhere else" }
   ]},
   { id: "working", name: "working", kinds: [
     { id: "office", name: "in an office" }, { id: "remote", name: "from home" }, { id: "labor", name: "with their hands" }, { id: "night", name: "night shift" }
@@ -127,7 +145,7 @@ const CATEGORIES = [
     { id: "social", name: "on social media" }, { id: "work", name: "for work" }, { id: "video", name: "watching" }, { id: "else", name: "the rest of the internet" }
   ]},
   { id: "watching", name: "watching something", kinds: [
-    { id: "tv", name: "television" }, { id: "stream", name: "a stream" }, { id: "film", name: "a film" }, { id: "sport", name: "sports" }
+    { id: "tv", name: "television" }, { id: "youtube", name: "youtube" }, { id: "stream", name: "a stream" }, { id: "film", name: "a film" }, { id: "sport", name: "sports" }, { id: "adult", name: "adult content" }
   ]},
   { id: "music", name: "listening to music", kinds: [
     { id: "headphones", name: "on headphones" }, { id: "speakers", name: "out loud" }, { id: "live", name: "live" }, { id: "car", name: "in a car" }
@@ -239,23 +257,29 @@ const CATEGORIES = [
   ]}
 ];
 
-const FPS = 240;
-const STEP = 1 / FPS;
 const fmt = new Intl.NumberFormat("en-US");
+const tzFmt = new Map();
 const listEl = document.getElementById("list");
 const detailEl = document.getElementById("detail");
 const blankEl = document.getElementById("blank");
-const odoState = new WeakMap();
 
 const shown = {};
-let odoNodes = [];
+const base = {};
+const vel = {};
+const COUNT_KEYS = [];
+for (const category of CATEGORIES) {
+  COUNT_KEYS.push(category.id);
+  for (const kind of category.kinds) COUNT_KEYS.push(`${category.id}:${kind.id}`);
+}
+let countNodes = [];
 let selected = null;
 let cycleIndex = 0;
 let lastSort = 0;
-let lastMachine = 0;
-let acc = 0;
+let lastPaint = 0;
+let lastSnap = 0;
 let cached = null;
-let snapshotAge = 1;
+
+const WHEEL = "01234567890".split("").map((digit) => `<span>${digit}</span>`).join("");
 
 function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
@@ -266,6 +290,8 @@ function lerp(a, b, t) {
 }
 
 const AGE15 = 0.756;
+const AGE18 = 0.73;
+const NET = 0.68;
 const MIN = (minutes) => minutes / 1440;
 
 function unit(weights) {
@@ -285,14 +311,19 @@ function hourValue(table, hour) {
 }
 
 function localParts(date, timeZone) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23"
-  }).formatToParts(date);
+  let fmtTz = tzFmt.get(timeZone);
+  if (!fmtTz) {
+    fmtTz = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23"
+    });
+    tzFmt.set(timeZone, fmtTz);
+  }
+  const parts = fmtTz.formatToParts(date);
 
   const get = (type) => parts.find((part) => part.type === type)?.value || "0";
   const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -404,6 +435,12 @@ function rates(hour, weekday) {
   const love = shaped(1.3, hour, H.private) * lerp(1, 1.2, we);
   const masturbating = shaped(1.15, hour, H.private) * lerp(1, 1.08, we);
   const kissing = shaped(0.7, hour, H.private) * lerp(1, 1.15, we);
+  const porn = AGE18 * NET * shaped(4.2, hour, H.private) * lerp(1, 1.12, we);
+  const sexting = AGE18 * NET * shaped(0.45, hour, H.private) * lerp(1, 1.15, we);
+  const dating = AGE18 * shaped(0.7, hour, H.evening) * lerp(1, 1.2, we);
+  const flirting = AGE18 * shaped(2, hour, H.evening) * lerp(1, 1.25, we);
+  const sexthought = AGE18 * (shaped(2.2, hour, H.day) + shaped(2.8, hour, H.private));
+  const cuddling = AGE18 * 0.5 * shaped(8, hour, H.evening) * lerp(1, 1.18, we);
   const dreaming = sleep * 0.22;
   const born = 0.0000155;
   const dying = 0.000002;
@@ -418,8 +455,14 @@ function rates(hour, weekday) {
     dreaming: split(dreaming, { wild: 0.28, ordinary: 0.52, nightmare: 0.14, lucid: 0.06 }),
     eating: split(eating, { breakfast, lunch, dinner, snack }),
     love: split(love, { together: 0.78, almost: 0.14, after: 0.08 }),
-    masturbating: split(masturbating, { bed: 0.58, bathroom: 0.26, else: 0.16 }),
+    masturbating: split(masturbating, { men: 0.72, women: 0.28 }),
     kissing: split(kissing, { romance: 0.48, hello: 0.27, family: 0.25 }),
+    porn: split(porn, { video: 0.78, live: 0.12, text: 0.10 }),
+    sexting: split(sexting, { write: 0.34, read: 0.40, photo: 0.26 }),
+    dating: split(dating, { swipe: 0.48, chat: 0.40, match: 0.12 }),
+    flirting: split(flirting, { person: 0.52, online: 0.36, work: 0.12 }),
+    sexthought: split(sexthought, { fantasy: 0.46, memory: 0.32, someone: 0.22 }),
+    cuddling: split(cuddling, { bed: 0.48, sofa: 0.36, else: 0.16 }),
     working: split(working, {
       office: 0.28,
       remote: 0.16,
@@ -432,7 +475,7 @@ function rates(hour, weekday) {
     walking: split(walking, { somewhere: 0.56, nowhere: 0.22, dog: 0.12, kid: 0.10 }),
     phone: split(phone, { scroll: 0.46, chat: 0.24, video: 0.20, other: 0.10 }),
     online: split(online, { social: 0.38, work: 0.22, video: 0.26, else: 0.14 }),
-    watching: split(watching, { tv: 0.34, stream: 0.38, film: 0.16, sport: 0.12 }),
+    watching: split(watching, { tv: 0.56, youtube: 0.16, stream: 0.12, film: 0.07, sport: 0.06, adult: 0.03 }),
     music: split(music, { headphones: 0.48, speakers: 0.26, live: 0.06, car: 0.20 }),
     gaming: split(gaming, { phone: 0.46, console: 0.22, pc: 0.20, field: 0.12 }),
     reading: split(reading, { book: 0.22, news: 0.18, chat: 0.36, else: 0.24 }),
@@ -534,63 +577,83 @@ function rankedCategories(data) {
 
 const type = { target: "", shown: "", pause: 0, hold: 0, locked: false };
 
-function bindOdos() {
-  odoNodes = [...document.querySelectorAll("[data-count].odo")];
-}
-
-function buildOdo(el, text, value) {
-  el.innerHTML = text.split("").map((ch) => {
-    if (ch === ",") return `<span class="odo-sep">,</span>`;
-    return `<span class="odo-ch"><span class="odo-a">${ch}</span><span class="odo-b">${ch}</span></span>`;
-  }).join("");
-  const cols = text.replace(/,/g, "").split("").map((digit) => ({
-    from: digit, to: digit, want: digit, t: 1, dir: 1
-  }));
-  return { face: text, value: Math.round(value), dir: 1, cols, nodes: [...el.querySelectorAll(".odo-ch")] };
-}
-
-function stepOdo(el, value, dt) {
-  const text = formatCount(value);
-  const nextInt = Math.round(value);
-  let state = odoState.get(el);
-  if (!state || state.face.replace(/\d/g, "0") !== text.replace(/\d/g, "0")) {
-    state = buildOdo(el, text, value);
-    odoState.set(el, state);
-    return;
-  }
-  if (nextInt !== state.value) {
-    state.dir = nextInt > state.value ? 1 : -1;
-    state.value = nextInt;
-  }
-  state.face = text;
-  const digits = text.replace(/,/g, "");
-  for (let i = 0; i < state.cols.length; i++) {
-    const col = state.cols[i];
-    col.want = digits[i];
-    if (col.t >= 1 && col.to !== col.want) {
-      col.from = col.to;
-      col.to = col.want;
-      col.dir = state.dir;
-      col.t = 0;
+function allTotals(data) {
+  const out = {};
+  for (const category of CATEGORIES) {
+    out[category.id] = data.totals[category.id].total;
+    for (const kind of category.kinds) {
+      out[`${category.id}:${kind.id}`] = data.totals[category.id].parts[kind.id] || 0;
     }
-    if (col.t < 1) col.t = Math.min(1, col.t + 16 * dt);
+  }
+  return out;
+}
+
+function seedMotion(data) {
+  const nowT = allTotals(data);
+  const laterT = allTotals(snapshot(new Date(Date.now() + 1000)));
+  for (const key of COUNT_KEYS) {
+    base[key] = nowT[key];
+    vel[key] = laterT[key] - nowT[key];
+    shown[key] = nowT[key];
   }
 }
 
-function drawOdo(el) {
-  const state = odoState.get(el);
-  if (!state) return;
-  for (let i = 0; i < state.cols.length; i++) {
-    const col = state.cols[i];
-    const node = state.nodes[i];
-    if (!node) continue;
-    const a = node.firstElementChild;
-    const b = node.lastElementChild;
-    a.textContent = col.from;
-    b.textContent = col.to;
-    const t = col.t;
-    a.style.transform = `translateY(${(col.dir > 0 ? -t : t) * 1.1}em)`;
-    b.style.transform = `translateY(${(col.dir > 0 ? 1 - t : t - 1) * 1.1}em)`;
+function refreshMotion(now) {
+  const data = snapshot();
+  const next = allTotals(data);
+  const elapsed = Math.max(0.25, (now - lastSnap) / 1000);
+  for (const key of COUNT_KEYS) {
+    vel[key] = (next[key] - base[key]) / elapsed;
+    base[key] = next[key];
+  }
+  cached = data;
+  lastSnap = now;
+  return data;
+}
+
+function liveVel(key) {
+  const v = vel[key] || 0;
+  if (Math.abs(v) >= 0.3) return v;
+  return v < 0 ? -0.35 : 0.35;
+}
+
+function bindCounts() {
+  countNodes = [...document.querySelectorAll("[data-count]")];
+}
+
+function ensureTicker(el) {
+  if (el._tick) return el._tick;
+  el.innerHTML = `
+    <span class="tick-head"></span>
+    <span class="tick-col" data-place="2"><span class="tick-wheel">${WHEEL}</span></span>
+    <span class="tick-col" data-place="1"><span class="tick-wheel">${WHEEL}</span></span>
+    <span class="tick-col" data-place="0"><span class="tick-wheel">${WHEEL}</span></span>
+  `;
+  el._tick = {
+    head: el.querySelector(".tick-head"),
+    headN: null,
+    cols: [...el.querySelectorAll(".tick-col")].map((col) => ({
+      col,
+      wheel: col.firstElementChild,
+      place: Number(col.dataset.place)
+    }))
+  };
+  return el._tick;
+}
+
+function paintCount(el, value) {
+  const tick = ensureTicker(el);
+  const n = Math.max(0, value);
+  const headN = Math.floor(n / 1000);
+  if (tick.headN !== headN) {
+    tick.headN = headN;
+    tick.head.textContent = headN > 0 ? `${formatCount(headN)},` : "";
+  }
+  for (const col of tick.cols) {
+    const show = headN > 0 || n >= 10 ** col.place || col.place === 0;
+    col.col.hidden = !show;
+    const t = (n / 10 ** col.place) % 10;
+    col.wheel.style.transform = `translateY(${-t * 1.1}em)`;
   }
 }
 
@@ -630,6 +693,9 @@ function stepType(dt) {
 }
 
 function drawType() {
+  if (blankEl._shown === type.shown && blankEl._target === type.target) return;
+  blankEl._shown = type.shown;
+  blankEl._target = type.target;
   blankEl.textContent = type.shown || "\u00a0";
   blankEl.classList.toggle("is-empty", type.shown.length === 0);
   blankEl.classList.toggle("is-typing", type.shown !== type.target);
@@ -640,27 +706,20 @@ function ensureList() {
     <button class="row" data-id="${category.id}">
       <span class="row-rank">${String(index + 1).padStart(2, "0")}</span>
       <span class="row-name">${category.name}</span>
-      <span class="row-count odo" data-count="${category.id}"></span>
+      <span class="row-count" data-count="${category.id}"></span>
     </button>
   `).join("");
 }
 
-function sortList(data) {
+function sortList() {
   const rows = [...listEl.querySelectorAll(".row")];
-  const first = new Map(rows.map((row) => [row, row.getBoundingClientRect().top]));
   rows.sort((a, b) => (shown[b.dataset.id] || 0) - (shown[a.dataset.id] || 0));
+  const frag = document.createDocumentFragment();
   rows.forEach((row, index) => {
     row.querySelector(".row-rank").textContent = String(index + 1).padStart(2, "0");
-    listEl.appendChild(row);
+    frag.appendChild(row);
   });
-  for (const row of rows) {
-    const dy = first.get(row) - row.getBoundingClientRect().top;
-    if (Math.abs(dy) < 1) continue;
-    row.animate(
-      [{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }],
-      { duration: 640, easing: "cubic-bezier(.16,.84,.32,1)" }
-    );
-  }
+  listEl.appendChild(frag);
 }
 
 function renderDetail(category, data) {
@@ -673,14 +732,14 @@ function renderDetail(category, data) {
   detailEl.innerHTML = `
     <button class="back" type="button" id="back">← all activities</button>
     <div class="big">
-      <div class="big-count odo" data-count="${category.id}"></div>
+      <div class="big-count" data-count="${category.id}"></div>
       <p class="big-label">people ${category.name}, ranked from the clock and who is awake</p>
     </div>
     ${kinds.map((kind) => `
       <div class="sub">
         <span class="sub-name">${kind.name}</span>
         <div class="track"><span data-bar="${category.id}:${kind.id}"></span></div>
-        <span class="sub-count odo" data-count="${category.id}:${kind.id}"></span>
+        <span class="sub-count" data-count="${category.id}:${kind.id}"></span>
       </div>
     `).join("")}
     <div class="world">
@@ -713,14 +772,16 @@ function setView(id) {
     detailEl.classList.remove("hidden");
     setTypeTarget(selected.name, true);
     renderDetail(selected, snapshot());
-    bindOdos();
+    bindCounts();
+    paintAll();
     history.replaceState(null, "", `#${selected.id}`);
   } else {
     detailEl.classList.add("hidden");
     listEl.classList.remove("hidden");
     detailEl.innerHTML = "";
     setTypeTarget(CATEGORIES[cycleIndex]?.name || "sleeping", false);
-    bindOdos();
+    bindCounts();
+    paintAll();
     history.replaceState(null, "", "#");
   }
 }
@@ -730,57 +791,38 @@ function readHash() {
   setView(id);
 }
 
-function ease(current, target, dt) {
-  if (current == null) return target;
-  return target + (current - target) * Math.exp(-7.2 * dt);
-}
-
-function stepCounts(data, dt) {
-  for (const category of CATEGORIES) {
-    shown[category.id] = ease(shown[category.id], data.totals[category.id].total, dt);
-    for (const kind of category.kinds) {
-      const key = `${category.id}:${kind.id}`;
-      shown[key] = ease(shown[key], data.totals[category.id].parts[kind.id] || 0, dt);
-    }
-  }
-  for (const node of odoNodes) {
-    const value = shown[node.dataset.count];
-    if (value != null) stepOdo(node, value, dt);
+function stepCounts(now, dt) {
+  const t = (now - lastSnap) / 1000;
+  for (const key of COUNT_KEYS) {
+    shown[key] = Math.max(0, base[key] + liveVel(key) * t);
   }
   stepType(dt);
 }
 
-function drawCounts() {
-  for (const node of odoNodes) drawOdo(node);
+function paintAll() {
+  for (const node of countNodes) {
+    if (selected && listEl.contains(node)) continue;
+    const value = shown[node.dataset.count];
+    if (value != null) paintCount(node, value);
+  }
   drawType();
 }
 
-function frame(now) {
-  const machineDt = lastMachine ? Math.min((now - lastMachine) / 1000, 0.05) : STEP;
-  lastMachine = now;
-  acc += machineDt;
-  snapshotAge += machineDt;
+function tick(now) {
+  const dt = lastPaint ? Math.min((now - lastPaint) / 1000, 0.05) : 1 / 60;
+  lastPaint = now;
 
-  if (!cached || snapshotAge >= 0.5) {
-    cached = snapshot();
-    snapshotAge = 0;
-  }
+  if (!cached || now - lastSnap > 2000) refreshMotion(now);
 
-  let steps = 0;
-  while (acc >= STEP && steps < 12) {
-    stepCounts(cached, STEP);
-    acc -= STEP;
-    steps++;
-  }
+  stepCounts(now, dt);
+  paintAll();
 
-  drawCounts();
-
-  if (!selected && now - lastSort > 1800) {
+  if (!selected && now - lastSort > 8000) {
     lastSort = now;
-    sortList(cached);
+    sortList();
   }
 
-  requestAnimationFrame(frame);
+  requestAnimationFrame(tick);
 }
 
 listEl.addEventListener("click", (event) => {
@@ -801,17 +843,12 @@ window.addEventListener("keydown", (event) => {
 
 ensureList();
 readHash();
-bindOdos();
+bindCounts();
 const first = snapshot();
 cached = first;
-for (const category of CATEGORIES) {
-  shown[category.id] = first.totals[category.id].total;
-  for (const kind of category.kinds) {
-    shown[`${category.id}:${kind.id}`] = first.totals[category.id].parts[kind.id] || 0;
-  }
-}
+lastSnap = performance.now();
+seedMotion(first);
 setTypeTarget(selected ? selected.name : "sleeping", Boolean(selected));
-stepCounts(first, STEP);
-drawCounts();
-sortList(first);
-requestAnimationFrame(frame);
+paintAll();
+sortList();
+requestAnimationFrame(tick);
