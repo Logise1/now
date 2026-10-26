@@ -105,9 +105,6 @@ const CATEGORIES = [
   { id: "kissing", name: "kissing", kinds: [
     { id: "romance", name: "romantically" }, { id: "hello", name: "hello or goodbye" }, { id: "family", name: "family" }
   ]},
-  { id: "porn", name: "watching porn", kinds: [
-    { id: "video", name: "a video" }, { id: "live", name: "a live cam" }, { id: "text", name: "photos or text" }
-  ]},
   { id: "sexting", name: "sexting", kinds: [
     { id: "write", name: "writing" }, { id: "read", name: "reading" }, { id: "photo", name: "a photo" }
   ]},
@@ -116,9 +113,6 @@ const CATEGORIES = [
   ]},
   { id: "flirting", name: "flirting", kinds: [
     { id: "person", name: "in person" }, { id: "online", name: "online" }, { id: "work", name: "at work" }
-  ]},
-  { id: "sexthought", name: "thinking about sex", kinds: [
-    { id: "fantasy", name: "a fantasy" }, { id: "memory", name: "a memory" }, { id: "someone", name: "someone nearby" }
   ]},
   { id: "cuddling", name: "cuddling", kinds: [
     { id: "bed", name: "in bed" }, { id: "sofa", name: "on a sofa" }, { id: "else", name: "somewhere else" }
@@ -435,11 +429,9 @@ function rates(hour, weekday) {
   const love = shaped(1.3, hour, H.private) * lerp(1, 1.2, we);
   const masturbating = shaped(1.15, hour, H.private) * lerp(1, 1.08, we);
   const kissing = shaped(0.7, hour, H.private) * lerp(1, 1.15, we);
-  const porn = AGE18 * NET * shaped(4.2, hour, H.private) * lerp(1, 1.12, we);
   const sexting = AGE18 * NET * shaped(0.45, hour, H.private) * lerp(1, 1.15, we);
   const dating = AGE18 * shaped(0.7, hour, H.evening) * lerp(1, 1.2, we);
   const flirting = AGE18 * shaped(2, hour, H.evening) * lerp(1, 1.25, we);
-  const sexthought = AGE18 * (shaped(2.2, hour, H.day) + shaped(2.8, hour, H.private));
   const cuddling = AGE18 * 0.5 * shaped(8, hour, H.evening) * lerp(1, 1.18, we);
   const dreaming = sleep * 0.22;
   const born = 0.0000155;
@@ -457,11 +449,9 @@ function rates(hour, weekday) {
     love: split(love, { together: 0.78, almost: 0.14, after: 0.08 }),
     masturbating: split(masturbating, { men: 0.72, women: 0.28 }),
     kissing: split(kissing, { romance: 0.48, hello: 0.27, family: 0.25 }),
-    porn: split(porn, { video: 0.78, live: 0.12, text: 0.10 }),
     sexting: split(sexting, { write: 0.34, read: 0.40, photo: 0.26 }),
     dating: split(dating, { swipe: 0.48, chat: 0.40, match: 0.12 }),
     flirting: split(flirting, { person: 0.52, online: 0.36, work: 0.12 }),
-    sexthought: split(sexthought, { fantasy: 0.46, memory: 0.32, someone: 0.22 }),
     cuddling: split(cuddling, { bed: 0.48, sofa: 0.36, else: 0.16 }),
     working: split(working, {
       office: 0.28,
